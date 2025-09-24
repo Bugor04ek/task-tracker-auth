@@ -51,6 +51,18 @@ def ask_oauth_link(telegram_id):
     return resp.json()["auth_url"]
 
 
+def check_authorized(telegram_id):
+    resp = requests.get(
+        f"{OAUTH_SERVER}/is_authorized",
+        headers={"X-SERVICE-SECRET": SERVICE_SECRET},
+        params={"telegram_id": telegram_id},
+        timeout=10
+    )
+    resp.raise_for_status()
+    j = resp.json()
+    return j.get("authorized", False), j.get("github_login")
+
+
 @bot.message_handler(commands=['login'])
 def login_cmd(message):
     try:
@@ -62,6 +74,11 @@ def login_cmd(message):
 
 @bot.message_handler(commands=['add_task'])
 def add_task(message):
+    ok, gh_login = check_authorized(message.from_user.id)
+    if not ok:
+        bot.reply_to(message, "⚠️ Сначала авторизуйтесь через /login, чтобы получить доступ.")
+        return
+
     try:
         task_desc = message.text.replace('/add_task', '').strip()
         user_id = message.from_user.id
@@ -83,6 +100,11 @@ def add_task(message):
 
 @bot.message_handler(commands=['list_tasks'])
 def list_tasks(message):
+    ok, gh_login = check_authorized(message.from_user.id)
+    if not ok:
+        bot.reply_to(message, "⚠️ Сначала авторизуйтесь через /login, чтобы получить доступ.")
+        return
+
     try:
         print(f"/list_tasks от user_id={message.from_user.id}")
 
@@ -103,6 +125,11 @@ def list_tasks(message):
 
 @bot.message_handler(commands=['close_task'])
 def close_task(message):
+    ok, gh_login = check_authorized(message.from_user.id)
+    if not ok:
+        bot.reply_to(message, "⚠️ Сначала авторизуйтесь через /login, чтобы получить доступ.")
+        return
+
     try:
         user_id = message.from_user.id
         open_issues = list(repo.get_issues(state='open'))
