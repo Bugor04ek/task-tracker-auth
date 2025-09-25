@@ -1,6 +1,7 @@
 import os
 from github import Github
 from dotenv import load_dotenv
+from flask import Flask, request, abort
 import telebot
 from telebot import types
 import requests
@@ -10,6 +11,7 @@ load_dotenv()
 
 GITHUB_TOKEN = os.environ.get('GITHUB_TOKEN')
 REPO_NAME = os.environ.get('REPO_NAME')
+OAUTH_SERVER = os.environ.get("OAUTH_SERVER_BASE_URL")
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
 
 if not TELEGRAM_TOKEN:
@@ -19,6 +21,15 @@ if not TELEGRAM_TOKEN:
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 gh = Github(GITHUB_TOKEN)
 repo = gh.get_repo(REPO_NAME)
+
+app = Flask(__name__)
+
+# --- Webhook настройки ---
+WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET")
+WEBHOOK_PATH = f"/telegram_webhook/{WEBHOOK_SECRET}"
+WEBHOOK_URL_BASE = os.environ.get("WEBHOOK_URL_BASE")  # https://task-tracker-auth.onrender.com
+WEBHOOK_URL = WEBHOOK_URL_BASE + WEBHOOK_PATH
+SERVICE_SECRET = os.environ.get('OAUTH_SERVICE_SECRET')
 
 # Состояния
 waiting_for_description = {}
@@ -34,10 +45,6 @@ def start(message):
         "Привет! Я бот для управления задачами.\n"
         "Команды: /start, /add_task <описание>, /list_tasks, /close_task"
     )
-
-
-OAUTH_SERVER = os.environ.get('OAUTH_SERVER_BASE_URL')  # например http://127.0.0.1:5000
-SERVICE_SECRET = os.environ.get('OAUTH_SERVICE_SECRET')
 
 
 def ask_oauth_link(telegram_id):
@@ -195,8 +202,26 @@ def callback_handler(call):
         bot.answer_callback_query(call.id, f"Ошибка: {str(e)}")
 
 
-# ===== Запуск =====
+# --- Flask endpoint для приёма апдейтов ---
+@app.route(WEBHOOK_PATH, methods=["POST"])
+def telegram_webhook():
+    if request.headers.get("content-type") != "application/json":
+        abort(403)
+    json_str = request.get_data().decode("utf-8")
+    update = types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "", 200
 
-if __name__ == '__main__':
-    print(f"Бот запущен для репозитория {repo.full_name}")
-    bot.polling(none_stop=True)
+# --- Устанавливаем webhook ---
+def setup_webhook():
+    bot.remove_webhook()
+    success = bot.set_webhook(url=WEBHOOK_URL)
+    if success:
+        print(f"✅ Webhook установлен: {WEBHOOK_URL}")
+    else:
+        print(f"❌ Ошибка установки webhook: {WEBHOOK_URL}")
+
+if __name__ == "__main__":
+    setup_webhook()
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
