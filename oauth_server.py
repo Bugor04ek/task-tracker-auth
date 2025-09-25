@@ -20,6 +20,10 @@ API_BASE = "https://api.github.com"
 
 app = Flask(__name__)
 
+@app.route("/")
+def index():
+    return "OAuth server running! 🚀"
+
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
